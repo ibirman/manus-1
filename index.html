@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandcastle Builder Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-header">
+            <div class="timer">Time: <span id="time">10:00</span></div>
+            <div class="wave-counter">Waves: <span id="wave-count">0</span>/10</div>
+            <div class="score">Score: <span id="score">0</span></div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="game-controls">
+            <button id="buildButton" class="control-button">Build Sand Block</button>
+            <button id="resetButton" class="control-button">Reset Game</button>
+            <button id="view3dButton" class="control-button">View in 3D</button>
+        </div>
+        <div id="gameInstructions" class="game-instructions">
+            <h2>How to Play:</h2>
+            <p>Build a sandcastle to protect an area from incoming waves.</p>
+            <p>Click on the beach to place sand blocks. Build walls higher by placing blocks on top of existing ones.</p>
+            <p>The closer to the water, the more points you earn, but the higher risk of wave damage.</p>
+            <p>Survive 10 waves within 10 minutes to win!</p>
+        </div>
+    </div>
+    <script src="js/three.min.js"></script>
+    <script src="js/sandcastle3d.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
