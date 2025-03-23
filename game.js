@@ -43,6 +43,7 @@ let waveAnimation = { // Wave animation properties
     maxReach: 3, // Maximum number of cells the wave can reach
     direction: 'in' // 'in' or 'out'
 };
+let currentShape = 'block'; // Current selected shape (default: single block)
 
 // Colors
 const COLORS = {
@@ -59,6 +60,50 @@ const COLORS = {
     wave: '#4169E1', // Royal blue for waves
     text: '#333333', // Dark gray for text
     background: '#87CEEB' // Sky blue for background
+};
+
+// Predefined shapes
+const SHAPES = {
+    block: { // Single block
+        pattern: [[1]],
+        description: "Single sand block"
+    },
+    wall: { // Horizontal wall
+        pattern: [[1, 1, 1, 1, 1]],
+        description: "Horizontal wall (5 blocks)"
+    },
+    tower: { // Square tower
+        pattern: [
+            [2, 2, 2],
+            [2, 3, 2],
+            [2, 2, 2]
+        ],
+        description: "Tower (3x3 blocks with higher center)"
+    },
+    gateway: { // Gateway/portcullis
+        pattern: [
+            [2, 0, 0, 0, 2],
+            [2, 0, 0, 0, 2],
+            [2, 2, 2, 2, 2]
+        ],
+        description: "Gateway with portcullis"
+    },
+    turret: { // Corner turret
+        pattern: [
+            [0, 2, 2],
+            [2, 3, 2],
+            [2, 2, 0]
+        ],
+        description: "Corner turret"
+    },
+    stairs: { // Stairs
+        pattern: [
+            [1, 0, 0],
+            [2, 1, 0],
+            [3, 2, 1]
+        ],
+        description: "Stairs (ascending height)"
+    }
 };
 
 // Initialize the game grid
@@ -200,7 +245,7 @@ function drawGrid() {
 
 // Handle mouse click on canvas
 function handleCanvasClick(event) {
-    if (gameOver || !gameStarted) return;
+    if (gameOver || !gameStarted || !isBuilding) return;
     
     // Get mouse position relative to canvas
     const rect = canvas.getBoundingClientRect();
@@ -213,10 +258,64 @@ function handleCanvasClick(event) {
     
     // Check if click is within grid bounds
     if (gridX >= 0 && gridX < GRID_WIDTH && gridY >= 0 && gridY < GRID_HEIGHT) {
-        // Check if we're building on existing sand or at the beach level
-        if (gameGrid[gridX][gridY] > 0 && gameGrid[gridX][gridY] < MAX_SAND_HEIGHT) {
-            // Increment sand height
-            gameGrid[gridX][gridY]++;
+        // Check if clicked on water
+        if (gridY < shoreline[gridX]) return;
+        
+        // Get the selected shape pattern
+        const shape = SHAPES[currentShape];
+        if (!shape) return;
+        
+        // Place the shape pattern
+        placeShape(gridX, gridY, shape.pattern);
+        
+        // Recalculate score
+        calculateScore();
+    }
+}
+
+// Place a shape pattern at the specified position
+function placeShape(startX, startY, pattern) {
+    const patternHeight = pattern.length;
+    const patternWidth = pattern[0].length;
+    
+    // Calculate the offset to center the pattern on the click point
+    const offsetX = Math.floor(patternWidth / 2);
+    const offsetY = Math.floor(patternHeight / 2);
+    
+    // Adjust start position to center the pattern
+    startX = startX - offsetX;
+    startY = startY - offsetY;
+    
+    // Check if shape fits within grid bounds
+    if (startX < 0 || startX + patternWidth > GRID_WIDTH || 
+        startY < 0 || startY + patternHeight > GRID_HEIGHT) return;
+    
+    // Check if shape is on land
+    for (let y = 0; y < patternHeight; y++) {
+        for (let x = 0; x < patternWidth; x++) {
+            const gridX = startX + x;
+            const gridY = startY + y;
+            
+            // Skip if this part of the pattern is empty (0)
+            if (pattern[y][x] === 0) continue;
+            
+            // Check if this position is on water
+            if (gridY < shoreline[gridX]) return;
+        }
+    }
+    
+    // Place the shape
+    for (let y = 0; y < patternHeight; y++) {
+        for (let x = 0; x < patternWidth; x++) {
+            const gridX = startX + x;
+            const gridY = startY + y;
+            const blockHeight = pattern[y][x];
+            
+            // Skip if this part of the pattern is empty (0)
+            if (blockHeight === 0) continue;
+            
+            // Add sand blocks (set to specified height or add to existing height)
+            gameGrid[gridX][gridY] = Math.min(MAX_SAND_HEIGHT, gameGrid[gridX][gridY] + blockHeight);
         }
     }
 }
@@ -471,6 +570,32 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('soundToggleButton').textContent = soundEnabled ? 'Sound: ON' : 'Sound: OFF';
     });
     
+    // Shape selector buttons
+    document.getElementById('wallButton').addEventListener('click', () => {
+        currentShape = 'wall';
+        highlightSelectedShape('wallButton');
+    });
+    
+    document.getElementById('towerButton').addEventListener('click', () => {
+        currentShape = 'tower';
+        highlightSelectedShape('towerButton');
+    });
+    
+    document.getElementById('gatewayButton').addEventListener('click', () => {
+        currentShape = 'gateway';
+        highlightSelectedShape('gatewayButton');
+    });
+    
+    document.getElementById('turretButton').addEventListener('click', () => {
+        currentShape = 'turret';
+        highlightSelectedShape('turretButton');
+    });
+    
+    document.getElementById('stairsButton').addEventListener('click', () => {
+        currentShape = 'stairs';
+        highlightSelectedShape('stairsButton');
+    });
+    
     // Initialize game
     initializeGrid();
     drawGrid();
@@ -478,3 +603,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start game automatically
     startGame();
 });
+
+// Highlight the selected shape button
+function highlightSelectedShape(buttonId) {
+    // Remove active class from all shape buttons
+    const shapeButtons = document.querySelectorAll('.shape-button');
+    shapeButtons.forEach(button => {
+        button.classList.remove('active');
+    });
+    
+    // Add active class to selected button
+    document.getElementById(buttonId).classList.add('active');
+    
+    // Ensure building mode is active
+    if (!isBuilding) {
+        isBuilding = true;
+        document.getElementById('buildButton').textContent = 'Cancel Building';
+    }
+}

@@ -82,3 +82,47 @@ body {
 .game-instructions p {
     line-height: 1.5;
 }
+
+.shape-selector {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #e6f2ff;
+    border-radius: 5px;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.shape-selector h3 {
+    color: #4682b4;
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.shape-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.shape-button {
+    padding: 8px 12px;
+    background-color: #5f9ea0;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s, transform 0.1s;
+}
+
+.shape-button:hover {
+    background-color: #4a7a7c;
+    transform: scale(1.05);
+}
+
+.shape-button.active {
+    background-color: #2e4d4e;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
