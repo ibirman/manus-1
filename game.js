@@ -22,6 +22,7 @@ const MAX_WAVES = 10; // Number of waves before game ends
 
 // Game variables
 let gameGrid = []; // 2D array to store sand heights
+let shoreline = []; // Array to store the ragged shoreline positions
 let protectedArea = []; // Area that needs to be protected
 let isBuilding = false; // Flag to indicate if player is in building mode
 let gameStarted = false; // Flag to indicate if game has started
@@ -34,6 +35,14 @@ let nextWaveTime = 0; // Time when the next wave will hit
 let gameStartTime = 0; // Time when the game started
 let sandcastleViewer3D = null; // 3D viewer for the sandcastle
 let soundEnabled = true; // Flag to indicate if sound is enabled
+let waveAnimation = { // Wave animation properties
+    active: false,
+    progress: 0,
+    duration: 3000, // Duration of wave animation in ms
+    startTime: 0,
+    maxReach: 3, // Maximum number of cells the wave can reach
+    direction: 'in' // 'in' or 'out'
+};
 
 // Colors
 const COLORS = {
@@ -55,11 +64,26 @@ const COLORS = {
 // Initialize the game grid
 function initializeGrid() {
     gameGrid = [];
+    shoreline = [];
+    
+    // Generate a ragged shoreline
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        // Random variation around the WATER_LINE
+        const variation = Math.floor(Math.random() * 5) - 2; // -2 to +2 cells
+        shoreline[x] = WATER_LINE + variation;
+    }
+    
+    // Smooth the shoreline to avoid sharp changes
+    for (let i = 1; i < GRID_WIDTH - 1; i++) {
+        shoreline[i] = Math.floor((shoreline[i-1] + shoreline[i] + shoreline[i+1]) / 3);
+    }
+    
+    // Initialize the grid with the ragged shoreline
     for (let x = 0; x < GRID_WIDTH; x++) {
         gameGrid[x] = [];
         for (let y = 0; y < GRID_HEIGHT; y++) {
             // Set initial sand height (0 for water, 1 for beach)
-            gameGrid[x][y] = y >= WATER_LINE ? 1 : 0;
+            gameGrid[x][y] = y >= shoreline[x] ? 1 : 0;
         }
     }
     
@@ -67,7 +91,10 @@ function initializeGrid() {
     const protectedWidth = Math.floor(GRID_WIDTH * 0.2); // 20% of grid width
     const protectedHeight = Math.floor(GRID_HEIGHT * 0.1); // 10% of grid height
     const protectedX = Math.floor(GRID_WIDTH * 0.4); // Start at 40% of grid width
-    const protectedY = Math.floor(WATER_LINE + (GRID_HEIGHT - WATER_LINE) * 0.3); // Start a bit below water line
+    
+    // Find the average shoreline position for protected area placement
+    const avgShorelinePos = shoreline.reduce((sum, pos) => sum + pos, 0) / GRID_WIDTH;
+    const protectedY = Math.floor(avgShorelinePos + (GRID_HEIGHT - avgShorelinePos) * 0.3); // Start a bit below water line
     
     protectedArea = {
         x: protectedX,
@@ -87,11 +114,39 @@ function drawGrid() {
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const height = gameGrid[x][y];
+            
+            // Calculate wave effect
+            let isWaveCell = false;
+            let waveAlpha = 0;
+            
+            if (waveAnimation.active) {
+                const baseShorelinePos = shoreline[x];
+                let waveReach = 0;
+                
+                if (waveAnimation.direction === 'in') {
+                    // Wave coming in
+                    waveReach = Math.floor(waveAnimation.progress * waveAnimation.maxReach);
+                    if (y >= baseShorelinePos - waveReach && y < baseShorelinePos) {
+                        isWaveCell = true;
+                        // Fade wave based on distance from shoreline
+                        waveAlpha = 0.8 - (0.8 * (baseShorelinePos - y) / waveReach);
+                    }
+                } else {
+                    // Wave going out
+                    waveReach = Math.floor((1 - waveAnimation.progress) * waveAnimation.maxReach);
+                    if (y >= baseShorelinePos - waveReach && y < baseShorelinePos) {
+                        isWaveCell = true;
+                        // Fade wave based on distance from shoreline
+                        waveAlpha = 0.8 - (0.8 * (baseShorelinePos - y) / waveReach);
+                    }
+                }
+            }
+            
             if (height > 0) {
                 // Draw sand with color based on height
                 ctx.fillStyle = COLORS.sand[Math.min(height - 1, COLORS.sand.length - 1)];
                 ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
-            } else if (y >= WATER_LINE) {
+            } else if (y >= shoreline[x]) {
                 // Draw beach
                 ctx.fillStyle = COLORS.beach;
                 ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
@@ -99,6 +154,12 @@ function drawGrid() {
                 // Draw water
                 ctx.fillStyle = COLORS.water;
                 ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                
+                // Draw wave overlay if this is a wave cell
+                if (isWaveCell) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${waveAlpha})`;
+                    ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                }
             }
         }
     }
@@ -202,18 +263,26 @@ function generateWave() {
         waveSound.play().catch(e => console.log("Error playing wave sound:", e));
     }
     
+    // Start wave animation coming in
+    waveAnimation.active = true;
+    waveAnimation.progress = 0;
+    waveAnimation.startTime = Date.now();
+    waveAnimation.direction = 'in';
+    
     // Determine wave height (strength)
     const waveHeight = Math.floor(Math.random() * 3) + 1;
+    waveAnimation.maxReach = waveHeight + 2; // Visual reach is slightly larger than erosion reach
     
-    // Wave affects sand near the water line
+    // Wave affects sand near the shoreline
     for (let x = 0; x < GRID_WIDTH; x++) {
         // Wave affects more blocks the higher it is
         const waveReach = waveHeight * 2;
+        const baseShorelinePos = shoreline[x];
         
-        for (let y = WATER_LINE; y < WATER_LINE + waveReach && y < GRID_HEIGHT; y++) {
-            // Calculate probability of erosion based on distance from water
-            const distanceFromWater = y - WATER_LINE;
-            const erosionProbability = 1 - (distanceFromWater / waveReach);
+        for (let y = baseShorelinePos; y < baseShorelinePos + waveReach && y < GRID_HEIGHT; y++) {
+            // Calculate probability of erosion based on distance from shoreline
+            const distanceFromShoreline = y - baseShorelinePos;
+            const erosionProbability = 1 - (distanceFromShoreline / waveReach);
             
             if (Math.random() < erosionProbability && gameGrid[x][y] > 0) {
                 // Erode sand (reduce height)
@@ -338,6 +407,25 @@ function gameLoop() {
     // Check if it's time for a wave
     if (currentTime >= nextWaveTime) {
         generateWave();
+    }
+    
+    // Update wave animation
+    if (waveAnimation.active) {
+        const elapsed = currentTime - waveAnimation.startTime;
+        const halfDuration = waveAnimation.duration / 2;
+        
+        if (elapsed < halfDuration) {
+            // First half: wave coming in
+            waveAnimation.progress = Math.min(1, elapsed / halfDuration);
+            waveAnimation.direction = 'in';
+        } else if (elapsed < waveAnimation.duration) {
+            // Second half: wave going out
+            waveAnimation.progress = Math.min(1, (elapsed - halfDuration) / halfDuration);
+            waveAnimation.direction = 'out';
+        } else {
+            // Animation complete
+            waveAnimation.active = false;
+        }
     }
     
     // Update displays
