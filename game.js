@@ -33,6 +33,7 @@ let lastWaveTime = 0; // Time when the last wave hit
 let nextWaveTime = 0; // Time when the next wave will hit
 let gameStartTime = 0; // Time when the game started
 let sandcastleViewer3D = null; // 3D viewer for the sandcastle
+let soundEnabled = true; // Flag to indicate if sound is enabled
 
 // Colors
 const COLORS = {
@@ -194,6 +195,13 @@ function generateWave() {
         return;
     }
     
+    // Play wave sound if enabled
+    if (soundEnabled) {
+        const waveSound = document.getElementById('waveSound');
+        waveSound.currentTime = 0; // Reset sound to beginning
+        waveSound.play().catch(e => console.log("Error playing wave sound:", e));
+    }
+    
     // Determine wave height (strength)
     const waveHeight = Math.floor(Math.random() * 3) + 1;
     
@@ -281,6 +289,13 @@ function endGame() {
     // Calculate final score
     calculateScore();
     
+    // Play game over sound if enabled
+    if (soundEnabled) {
+        const gameOverSound = document.getElementById('gameOverSound');
+        gameOverSound.currentTime = 0; // Reset sound to beginning
+        gameOverSound.play().catch(e => console.log("Error playing game over sound:", e));
+    }
+    
     // Display game over message
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -360,6 +375,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Render the current sandcastle in 3D
         sandcastleViewer3D.render();
+    });
+    
+    // Sound toggle button
+    document.getElementById('soundToggleButton').addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        document.getElementById('soundToggleButton').textContent = soundEnabled ? 'Sound: ON' : 'Sound: OFF';
     });
     
     // Initialize game
