@@ -15,31 +15,37 @@
         </div>
         <canvas id="gameCanvas"></canvas>
         <div class="game-controls">
-            <button id="buildButton" class="control-button">Build Sand Block</button>
-            <button id="resetButton" class="control-button">Reset Game</button>
-            <button id="view3dButton" class="control-button">View in 3D</button>
-            <button id="soundToggleButton" class="control-button">Sound: ON</button>
+            <button id="start-button" class="control-button">Start Game</button>
+            <button id="build-button" class="control-button">Start Building</button>
+            <button id="rotate-button" class="control-button">Rotate Shape</button>
+            <button id="sound-button" class="control-button">Sound: ON</button>
+            <div id="rotation-display" class="rotation-info">Rotation: 0°</div>
         </div>
         
         <div class="shape-selector">
             <h3>Predefined Shapes:</h3>
             <div class="shape-buttons">
+                <button id="blockButton" class="shape-button selected">Block</button>
                 <button id="wallButton" class="shape-button">Wall</button>
                 <button id="towerButton" class="shape-button">Tower</button>
                 <button id="gatewayButton" class="shape-button">Gateway</button>
                 <button id="turretButton" class="shape-button">Turret</button>
                 <button id="stairsButton" class="shape-button">Stairs</button>
             </div>
+            <div id="shape-description" class="shape-description">Single sand block</div>
         </div>
         
         <!-- Audio elements for sound effects -->
         <audio id="waveSound" src="assets/sounds/wave.mp3" preload="auto"></audio>
         <audio id="gameOverSound" src="assets/sounds/gameover.mp3" preload="auto"></audio>
+        <div id="game-status" class="game-status">Ready to start</div>
         <div id="gameInstructions" class="game-instructions">
             <h2>How to Play:</h2>
             <p>Build a sandcastle to protect an area from incoming waves.</p>
             <p>Click on the beach to place sand blocks. Build walls higher by placing blocks on top of existing ones.</p>
+            <p>Use the Rotate button to change the orientation of walls and other shapes.</p>
             <p>The closer to the water, the more points you earn, but the higher risk of wave damage.</p>
+            <p>When a wave breaks through a wall, water will flood in behind it!</p>
             <p>Survive 10 waves within 10 minutes to win!</p>
         </div>
     </div>
