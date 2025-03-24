@@ -45,8 +45,10 @@ body {
 .game-controls {
     display: flex;
     justify-content: center;
+    align-items: center;
     margin-top: 15px;
     width: 100%;
+    flex-wrap: wrap;
 }
 
 .control-button {
@@ -63,6 +65,26 @@ body {
 
 .control-button:hover {
     background-color: #36648b;
+}
+
+.rotation-info {
+    margin-left: 15px;
+    padding: 5px 10px;
+    background-color: #e6f2ff;
+    border-radius: 5px;
+    font-weight: bold;
+    color: #4682b4;
+}
+
+.game-status {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #4682b4;
+    color: white;
+    border-radius: 5px;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .game-instructions {
@@ -122,7 +144,13 @@ body {
     transform: scale(1.05);
 }
 
-.shape-button.active {
+.shape-button.selected {
     background-color: #2e4d4e;
     box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.shape-description {
+    margin-top: 10px;
+    font-style: italic;
+    color: #4682b4;
 }

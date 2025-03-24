@@ -13,7 +13,7 @@ canvas.height = 600;
 const GRID_SIZE = 20; // Size of each grid cell in pixels
 const GRID_WIDTH = Math.floor(canvas.width / GRID_SIZE);
 const GRID_HEIGHT = Math.floor(canvas.height / GRID_SIZE);
-const WATER_LINE = Math.floor(GRID_HEIGHT * 0.7); // Water starts at 70% of the canvas height
+const WATER_LINE = Math.floor(GRID_HEIGHT * 0.6); // Water starts at 60% of the canvas height (reduced from 70%)
 const MAX_SAND_HEIGHT = 5; // Maximum height of sand blocks
 const WAVE_INTERVAL_MIN = 20000; // Minimum time between waves (ms)
 const WAVE_INTERVAL_MAX = 40000; // Maximum time between waves (ms)
@@ -41,9 +41,12 @@ let waveAnimation = { // Wave animation properties
     duration: 3000, // Duration of wave animation in ms
     startTime: 0,
     maxReach: 3, // Maximum number of cells the wave can reach
-    direction: 'in' // 'in' or 'out'
+    direction: 'in', // 'in' or 'out'
+    pattern: [] // Array to store variable wave reach across screen width
 };
 let currentShape = 'block'; // Current selected shape (default: single block)
+let currentRotation = 0; // Current rotation angle in degrees (0, 90, 180, 270)
+let floodedCells = []; // Array to track cells that are flooded behind broken walls
 
 // Colors
 const COLORS = {
@@ -59,7 +62,8 @@ const COLORS = {
     protectedArea: 'rgba(144, 238, 144, 0.3)', // Light green with transparency
     wave: '#4169E1', // Royal blue for waves
     text: '#333333', // Dark gray for text
-    background: '#87CEEB' // Sky blue for background
+    background: '#87CEEB', // Sky blue for background
+    flood: 'rgba(30, 144, 255, 0.5)' // Semi-transparent blue for flooding
 };
 
 // Predefined shapes
@@ -110,6 +114,7 @@ const SHAPES = {
 function initializeGrid() {
     gameGrid = [];
     shoreline = [];
+    floodedCells = [];
     
     // Generate a ragged shoreline
     for (let x = 0; x < GRID_WIDTH; x++) {
@@ -169,8 +174,8 @@ function drawGrid() {
                 let waveReach = 0;
                 
                 if (waveAnimation.direction === 'in') {
-                    // Wave coming in
-                    waveReach = Math.floor(waveAnimation.progress * waveAnimation.maxReach);
+                    // Wave coming in with variable reach based on pattern
+                    waveReach = Math.floor(waveAnimation.progress * waveAnimation.pattern[x]);
                     if (y >= baseShorelinePos - waveReach && y < baseShorelinePos) {
                         isWaveCell = true;
                         // Fade wave based on distance from shoreline
@@ -178,7 +183,7 @@ function drawGrid() {
                     }
                 } else {
                     // Wave going out
-                    waveReach = Math.floor((1 - waveAnimation.progress) * waveAnimation.maxReach);
+                    waveReach = Math.floor((1 - waveAnimation.progress) * waveAnimation.pattern[x]);
                     if (y >= baseShorelinePos - waveReach && y < baseShorelinePos) {
                         isWaveCell = true;
                         // Fade wave based on distance from shoreline
@@ -187,14 +192,29 @@ function drawGrid() {
                 }
             }
             
+            // Check if this is a flooded cell
+            const isFlooded = floodedCells.some(cell => cell.x === x && cell.y === y);
+            
             if (height > 0) {
                 // Draw sand with color based on height
                 ctx.fillStyle = COLORS.sand[Math.min(height - 1, COLORS.sand.length - 1)];
                 ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                
+                // Draw flood overlay if this cell is flooded
+                if (isFlooded) {
+                    ctx.fillStyle = COLORS.flood;
+                    ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                }
             } else if (y >= shoreline[x]) {
                 // Draw beach
                 ctx.fillStyle = COLORS.beach;
                 ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                
+                // Draw flood overlay if this cell is flooded
+                if (isFlooded) {
+                    ctx.fillStyle = COLORS.flood;
+                    ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                }
             } else {
                 // Draw water
                 ctx.fillStyle = COLORS.water;
@@ -237,8 +257,17 @@ function drawGrid() {
     ctx.strokeStyle = 'rgba(30, 144, 255, 0.8)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, WATER_LINE * GRID_SIZE);
-    ctx.lineTo(canvas.width, WATER_LINE * GRID_SIZE);
+    
+    // Draw a wavy water line instead of straight
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        const y = shoreline[x] * GRID_SIZE;
+        if (x === 0) {
+            ctx.moveTo(x * GRID_SIZE, y);
+        } else {
+            ctx.lineTo(x * GRID_SIZE, y);
+        }
+    }
+    
     ctx.stroke();
     ctx.lineWidth = 1;
 }
@@ -257,20 +286,54 @@ function handleCanvasClick(event) {
     const gridY = Math.floor(mouseY / GRID_SIZE);
     
     // Check if click is within grid bounds
-    if (gridX >= 0 && gridX < GRID_WIDTH && gridY >= 0 && gridY < GRID_HEIGHT) {
-        // Check if clicked on water
-        if (gridY < shoreline[gridX]) return;
-        
-        // Get the selected shape pattern
-        const shape = SHAPES[currentShape];
-        if (!shape) return;
-        
-        // Place the shape pattern
-        placeShape(gridX, gridY, shape.pattern);
-        
-        // Recalculate score
-        calculateScore();
+    if (gridX < 0 || gridX >= GRID_WIDTH || gridY < 0 || gridY >= GRID_HEIGHT) return;
+    
+    // Get the selected shape
+    const shape = SHAPES[currentShape];
+    if (!shape) return;
+    
+    // Place the shape with current rotation
+    placeShape(gridX, gridY, rotatePattern(shape.pattern, currentRotation));
+}
+
+// Rotate a pattern based on the rotation angle
+function rotatePattern(pattern, rotation) {
+    // No rotation needed
+    if (rotation === 0) return pattern;
+    
+    const height = pattern.length;
+    const width = pattern[0].length;
+    let rotatedPattern = [];
+    
+    // 90 degrees rotation
+    if (rotation === 90) {
+        rotatedPattern = Array(width).fill().map(() => Array(height).fill(0));
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                rotatedPattern[x][height - 1 - y] = pattern[y][x];
+            }
+        }
     }
+    // 180 degrees rotation
+    else if (rotation === 180) {
+        rotatedPattern = Array(height).fill().map(() => Array(width).fill(0));
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                rotatedPattern[height - 1 - y][width - 1 - x] = pattern[y][x];
+            }
+        }
+    }
+    // 270 degrees rotation
+    else if (rotation === 270) {
+        rotatedPattern = Array(width).fill().map(() => Array(height).fill(0));
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                rotatedPattern[width - 1 - x][y] = pattern[y][x];
+            }
+        }
+    }
+    
+    return rotatedPattern;
 }
 
 // Place a shape pattern at the specified position
@@ -324,28 +387,43 @@ function placeShape(startX, startY, pattern) {
 function startGame() {
     if (gameStarted) return;
     
+    // Initialize the game grid
     initializeGrid();
+    
+    // Set game state
     gameStarted = true;
     gameOver = false;
+    isBuilding = true;
     score = 0;
     waveCount = 0;
     timeRemaining = GAME_DURATION;
     gameStartTime = Date.now();
-    lastWaveTime = gameStartTime;
+    
+    // Schedule the first wave
     scheduleNextWave();
     
+    // Start the game loop
+    requestAnimationFrame(gameLoop);
+    
     // Update UI
+    document.getElementById('start-button').textContent = 'Restart Game';
+    document.getElementById('game-status').textContent = 'Game in progress...';
     updateScoreDisplay();
     updateWaveCountDisplay();
-    
-    // Start game loop
-    requestAnimationFrame(gameLoop);
+    updateTimerDisplay();
 }
 
-// Schedule the next wave
-function scheduleNextWave() {
-    const interval = Math.random() * (WAVE_INTERVAL_MAX - WAVE_INTERVAL_MIN) + WAVE_INTERVAL_MIN;
-    nextWaveTime = Date.now() + interval;
+// End the game
+function endGame() {
+    gameOver = true;
+    isBuilding = false;
+    
+    // Update UI
+    document.getElementById('game-status').textContent = 'Game Over!';
+    
+    // Display final score
+    const finalScoreMessage = `Final Score: ${score}`;
+    document.getElementById('game-status').textContent += ` ${finalScoreMessage}`;
 }
 
 // Generate a wave
@@ -370,12 +448,54 @@ function generateWave() {
     
     // Determine wave height (strength)
     const waveHeight = Math.floor(Math.random() * 3) + 1;
-    waveAnimation.maxReach = waveHeight + 2; // Visual reach is slightly larger than erosion reach
     
-    // Wave affects sand near the shoreline
+    // Generate a realistic wave pattern with variable reach across the screen
+    waveAnimation.pattern = [];
+    
+    // Create 2-3 wave peaks with higher reach
+    const numPeaks = Math.floor(Math.random() * 2) + 2; // 2-3 peaks
+    const peakPositions = [];
+    
+    // Determine random peak positions
+    for (let i = 0; i < numPeaks; i++) {
+        peakPositions.push(Math.floor(Math.random() * GRID_WIDTH));
+    }
+    
+    // Sort peak positions
+    peakPositions.sort((a, b) => a - b);
+    
+    // Generate wave pattern with peaks and valleys
     for (let x = 0; x < GRID_WIDTH; x++) {
-        // Wave affects more blocks the higher it is
-        const waveReach = waveHeight * 2;
+        // Find the closest peak
+        let closestPeakDist = GRID_WIDTH;
+        for (const peakPos of peakPositions) {
+            const dist = Math.abs(x - peakPos);
+            if (dist < closestPeakDist) {
+                closestPeakDist = dist;
+            }
+        }
+        
+        // Calculate reach based on distance from peak (using a bell curve)
+        const maxPeakReach = waveHeight * 3; // Maximum reach at peak
+        const minValleyReach = waveHeight; // Minimum reach at valley
+        
+        // Use a bell curve formula to calculate reach
+        const peakWidth = GRID_WIDTH / (numPeaks * 2); // Width of peak influence
+        const normalizedDist = closestPeakDist / peakWidth;
+        const bellCurveValue = Math.exp(-(normalizedDist * normalizedDist) / 2);
+        
+        // Calculate final reach for this position
+        const reach = minValleyReach + (maxPeakReach - minValleyReach) * bellCurveValue;
+        waveAnimation.pattern[x] = reach;
+    }
+    
+    // Set max reach for animation
+    waveAnimation.maxReach = maxPeakReach;
+    
+    // Wave affects sand near the shoreline with variable reach
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        // Wave affects more blocks based on the pattern
+        const waveReach = Math.floor(waveAnimation.pattern[x]);
         const baseShorelinePos = shoreline[x];
         
         for (let y = baseShorelinePos; y < baseShorelinePos + waveReach && y < GRID_HEIGHT; y++) {
@@ -386,6 +506,9 @@ function generateWave() {
             if (Math.random() < erosionProbability && gameGrid[x][y] > 0) {
                 // Erode sand (reduce height)
                 gameGrid[x][y] = Math.max(0, gameGrid[x][y] - 1);
+                
+                // Check for flooding behind walls
+                checkForFlooding(x, y);
             }
         }
     }
@@ -402,6 +525,88 @@ function generateWave() {
         scheduleNextWave();
     } else if (waveCount >= MAX_WAVES) {
         endGame();
+    }
+}
+
+// Check for flooding behind walls when a cell is eroded
+function checkForFlooding(x, y) {
+    // If the cell was completely eroded (height is now 0)
+    if (gameGrid[x][y] === 0) {
+        // Check if this was a wall breach (had sand on both sides)
+        let hadWallOnLeft = false;
+        let hadWallOnRight = false;
+        
+        // Check left side
+        for (let checkX = x - 1; checkX >= 0; checkX--) {
+            if (gameGrid[checkX][y] > 0) {
+                hadWallOnLeft = true;
+                break;
+            }
+            if (checkX < shoreline[checkX]) {
+                // Reached water, no wall
+                break;
+            }
+        }
+        
+        // Check right side
+        for (let checkX = x + 1; checkX < GRID_WIDTH; checkX++) {
+            if (gameGrid[checkX][y] > 0) {
+                hadWallOnRight = true;
+                break;
+            }
+            if (checkX < shoreline[checkX]) {
+                // Reached water, no wall
+                break;
+            }
+        }
+        
+        // If there was a wall on both sides, flood behind the breach
+        if (hadWallOnLeft && hadWallOnRight) {
+            floodBehindWall(x, y);
+        }
+    }
+}
+
+// Flood the area behind a breached wall
+function floodBehindWall(x, y) {
+    // Start flood from the breach point
+    const floodQueue = [{x, y}];
+    const visited = new Set();
+    
+    // Breadth-first search to flood connected empty cells
+    while (floodQueue.length > 0) {
+        const current = floodQueue.shift();
+        const key = `${current.x},${current.y}`;
+        
+        // Skip if already visited
+        if (visited.has(key)) continue;
+        visited.add(key);
+        
+        // Add to flooded cells if not already flooded
+        if (!floodedCells.some(cell => cell.x === current.x && cell.y === current.y)) {
+            floodedCells.push({x: current.x, y: current.y});
+        }
+        
+        // Check adjacent cells (4-directional)
+        const directions = [
+            {dx: 1, dy: 0},  // right
+            {dx: -1, dy: 0}, // left
+            {dx: 0, dy: 1},  // down
+            {dx: 0, dy: -1}  // up
+        ];
+        
+        for (const dir of directions) {
+            const nextX = current.x + dir.dx;
+            const nextY = current.y + dir.dy;
+            
+            // Check bounds
+            if (nextX < 0 || nextX >= GRID_WIDTH || nextY < 0 || nextY >= GRID_HEIGHT) continue;
+            
+            // Only flood cells that are on land and not already sand blocks
+            if (nextY >= shoreline[nextX] && gameGrid[nextX][nextY] === 0) {
+                floodQueue.push({x: nextX, y: nextY});
+            }
+        }
     }
 }
 
@@ -450,174 +655,143 @@ function updateScoreDisplay() {
     document.getElementById('score').textContent = score;
 }
 
-// End the game
-function endGame() {
-    gameOver = true;
-    
-    // Calculate final score
-    calculateScore();
-    
-    // Play game over sound if enabled
-    if (soundEnabled) {
-        const gameOverSound = document.getElementById('gameOverSound');
-        gameOverSound.currentTime = 0; // Reset sound to beginning
-        gameOverSound.play().catch(e => console.log("Error playing game over sound:", e));
-    }
-    
-    // Display game over message
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = 'white';
-    ctx.font = '48px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('Game Over!', canvas.width / 2, canvas.height / 2 - 50);
-    
-    ctx.font = '24px Arial';
-    ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2);
-    ctx.fillText(`Waves Survived: ${waveCount}/${MAX_WAVES}`, canvas.width / 2, canvas.height / 2 + 40);
-    
-    ctx.font = '18px Arial';
-    ctx.fillText('Click "Reset Game" to play again', canvas.width / 2, canvas.height / 2 + 100);
+// Schedule the next wave
+function scheduleNextWave() {
+    const interval = Math.floor(Math.random() * (WAVE_INTERVAL_MAX - WAVE_INTERVAL_MIN)) + WAVE_INTERVAL_MIN;
+    nextWaveTime = Date.now() + interval;
 }
 
-// Reset the game
-function resetGame() {
-    gameStarted = false;
-    gameOver = false;
-    initializeGrid();
-    drawGrid();
-}
-
-// Main game loop
+// Game loop
 function gameLoop() {
-    if (!gameStarted || gameOver) return;
+    if (!gameStarted) return;
     
     // Update time remaining
     const currentTime = Date.now();
     timeRemaining = Math.max(0, GAME_DURATION - (currentTime - gameStartTime));
+    updateTimerDisplay();
     
     // Check if time is up
-    if (timeRemaining <= 0) {
+    if (timeRemaining <= 0 && !gameOver) {
         endGame();
-        return;
-    }
-    
-    // Check if it's time for a wave
-    if (currentTime >= nextWaveTime) {
-        generateWave();
     }
     
     // Update wave animation
     if (waveAnimation.active) {
         const elapsed = currentTime - waveAnimation.startTime;
-        const halfDuration = waveAnimation.duration / 2;
+        waveAnimation.progress = Math.min(1, elapsed / waveAnimation.duration);
         
-        if (elapsed < halfDuration) {
-            // First half: wave coming in
-            waveAnimation.progress = Math.min(1, elapsed / halfDuration);
-            waveAnimation.direction = 'in';
-        } else if (elapsed < waveAnimation.duration) {
-            // Second half: wave going out
-            waveAnimation.progress = Math.min(1, (elapsed - halfDuration) / halfDuration);
-            waveAnimation.direction = 'out';
-        } else {
-            // Animation complete
-            waveAnimation.active = false;
+        // Check if wave animation is complete
+        if (waveAnimation.progress >= 1) {
+            if (waveAnimation.direction === 'in') {
+                // Switch to wave going out
+                waveAnimation.direction = 'out';
+                waveAnimation.startTime = currentTime;
+                waveAnimation.progress = 0;
+            } else {
+                // End wave animation
+                waveAnimation.active = false;
+            }
         }
     }
     
-    // Update displays
-    updateTimerDisplay();
+    // Check if it's time for the next wave
+    if (!gameOver && !waveAnimation.active && currentTime >= nextWaveTime) {
+        generateWave();
+    }
     
-    // Draw game state
+    // Draw the game state
     drawGrid();
     
-    // Continue game loop
-    requestAnimationFrame(gameLoop);
+    // Continue the game loop
+    if (!gameOver) {
+        requestAnimationFrame(gameLoop);
+    }
 }
 
-// Event listeners
-document.addEventListener('DOMContentLoaded', () => {
-    // Canvas click event
+// Toggle building mode
+function toggleBuildingMode() {
+    if (!gameStarted || gameOver) return;
+    isBuilding = !isBuilding;
+    document.getElementById('build-button').textContent = isBuilding ? 'Stop Building' : 'Start Building';
+}
+
+// Toggle sound
+function toggleSound() {
+    soundEnabled = !soundEnabled;
+    document.getElementById('sound-button').textContent = soundEnabled ? 'Sound: ON' : 'Sound: OFF';
+}
+
+// Rotate the current shape
+function rotateShape() {
+    // Rotate 90 degrees clockwise
+    currentRotation = (currentRotation + 90) % 360;
+    document.getElementById('rotation-display').textContent = `Rotation: ${currentRotation}°`;
+}
+
+// Initialize the game when the page loads
+window.addEventListener('load', () => {
+    // Set up event listeners
     canvas.addEventListener('click', handleCanvasClick);
+    document.getElementById('start-button').addEventListener('click', startGame);
+    document.getElementById('build-button').addEventListener('click', toggleBuildingMode);
+    document.getElementById('sound-button').addEventListener('click', toggleSound);
+    document.getElementById('rotate-button').addEventListener('click', rotateShape);
     
-    // Build button
-    document.getElementById('buildButton').addEventListener('click', () => {
-        isBuilding = !isBuilding;
-        document.getElementById('buildButton').textContent = isBuilding ? 'Cancel Building' : 'Build Sand Block';
+    // Set up shape selection buttons
+    document.getElementById('blockButton').addEventListener('click', () => {
+        currentShape = 'block';
+        highlightSelectedShape('blockButton');
     });
-    
-    // Reset button
-    document.getElementById('resetButton').addEventListener('click', resetGame);
-    
-    // 3D view button
-    document.getElementById('view3dButton').addEventListener('click', () => {
-        if (!gameStarted) return;
-        
-        // Initialize 3D viewer if not already created
-        if (!sandcastleViewer3D) {
-            sandcastleViewer3D = new SandcastleViewer3D(gameGrid, WATER_LINE);
-        }
-        
-        // Render the current sandcastle in 3D
-        sandcastleViewer3D.render();
-    });
-    
-    // Sound toggle button
-    document.getElementById('soundToggleButton').addEventListener('click', () => {
-        soundEnabled = !soundEnabled;
-        document.getElementById('soundToggleButton').textContent = soundEnabled ? 'Sound: ON' : 'Sound: OFF';
-    });
-    
-    // Shape selector buttons
     document.getElementById('wallButton').addEventListener('click', () => {
         currentShape = 'wall';
         highlightSelectedShape('wallButton');
     });
-    
     document.getElementById('towerButton').addEventListener('click', () => {
         currentShape = 'tower';
         highlightSelectedShape('towerButton');
     });
-    
     document.getElementById('gatewayButton').addEventListener('click', () => {
         currentShape = 'gateway';
         highlightSelectedShape('gatewayButton');
     });
-    
     document.getElementById('turretButton').addEventListener('click', () => {
         currentShape = 'turret';
         highlightSelectedShape('turretButton');
     });
-    
     document.getElementById('stairsButton').addEventListener('click', () => {
         currentShape = 'stairs';
         highlightSelectedShape('stairsButton');
     });
     
-    // Initialize game
+    // Initialize the game grid
     initializeGrid();
+    
+    // Draw the initial state
     drawGrid();
     
-    // Start game automatically
-    startGame();
+    // Display shape descriptions
+    updateShapeDescription();
 });
 
 // Highlight the selected shape button
 function highlightSelectedShape(buttonId) {
-    // Remove active class from all shape buttons
+    // Remove highlight from all buttons
     const shapeButtons = document.querySelectorAll('.shape-button');
     shapeButtons.forEach(button => {
-        button.classList.remove('active');
+        button.classList.remove('selected');
     });
     
-    // Add active class to selected button
-    document.getElementById(buttonId).classList.add('active');
+    // Add highlight to selected button
+    document.getElementById(buttonId).classList.add('selected');
     
-    // Ensure building mode is active
-    if (!isBuilding) {
-        isBuilding = true;
-        document.getElementById('buildButton').textContent = 'Cancel Building';
+    // Update shape description
+    updateShapeDescription();
+}
+
+// Update the shape description
+function updateShapeDescription() {
+    const shape = SHAPES[currentShape];
+    if (shape) {
+        document.getElementById('shape-description').textContent = shape.description;
     }
 }
